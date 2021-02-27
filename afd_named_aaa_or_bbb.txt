@@ -1,0 +1,15 @@
+>s0 sa sb s2a s2b s3a* s3b*
+s0 a sa
+s0 b sb
+sa a s2a
+sa b sb
+s2a a s3a
+s2a b sb
+s3a a s3a
+s3a b s3a
+sb a sa
+sb b sa
+s2b a sa
+s2b b s3b
+s3b a s3b
+s3b b s3b
