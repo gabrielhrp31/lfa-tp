@@ -6,73 +6,128 @@ class Automaton:
 
 
 class Automaton:
-    def __init__(self):
-        self.__num_states = 0
-
+    def __init__(self, num_states=0, states=list(), alphabet=list(), transitions=dict(), initials=list(), finals=list()):
+        self.__num_states = num_states
         # elementos que compoem um automato
-        self.__states = list()
-        self.__alphabet = list()  # [ A, ... ]
-        self.__transitions = dict()  # { (E, A*) : E+, ... }
-        self.__initials = list()  # [ E, ... ]
-        self.__finals = list()  # [ E, ... ]
+        self.__states = states
+        self.__alphabet = alphabet  # [ A, ... ]
+        self.__transitions = transitions  # { (E, A*) : E+, ... }
+        self.__initials = initials # [ E, ... ]
+        self.__finals = finals  # [ E, ... ]
 
     def mount_table(self):
         table = dict()
-        for i in range(0, len(self.__states)-1):
+        for i in range(0, len(self.__states) - 1):
             table[self.__states[i]] = dict()
-            for j in range(0, len(self.__states)-(i+1)):
+            for j in range(0, len(self.__states) - (i + 1)):
                 reverse_states = list(reversed(self.__states))
-                table[self.__states[i]][reverse_states[j]] = None
+                table[self.__states[i]][reverse_states[j]] = dict()
+                table[self.__states[i]][reverse_states[j]]['tested'] = False
+                table[self.__states[i]][reverse_states[j]]['equivalent'] = True
         return table
 
     def mark_trivially_not_equivalent(self, table):
         for row in table:
             for col in table[row]:
-                if row in self.__initials and col not in self.__initials:
-                    table[row][col] = False
+                # if row in self.__initials and col not in self.__initials:
+                #     table[row][col] = False
                 if row in self.__finals and col not in self.__finals:
-                    table[row][col] = False
+                    table[row][col]['tested'] = False
+                    table[row][col]['equivalent'] = False
                 if col in self.__finals and row not in self.__finals:
-                    table[row][col] = False
+                    table[row][col]['tested'] = False
+                    table[row][col]['equivalent'] = False
 
     def print_eq_table(self, table):
         for row in table:
-            print(row +" | "+ str(table[row]))
+            print(row + " | " + str(table[row]))
 
-    def test_not_trivially(self, table):
+    def tested_all(self, table):
         for row in table:
             for col in table[row]:
-                if not table[row][col] is None:
-                    for entry in self.__alphabet:
-                        row_results = list()
-                        col_results = list()
-                        for t in self.__transitions:
-                            if t[1] == entry and row in self.__transitions[t]:
-                                row_results.append(t[0])
-                        for t in self.__transitions:
-                            if t[1] == entry and col in self.__transitions[t]:
-                                col_results.append(t[0])
-                        results_tuples = list()
-                        for row_res in row_results:
-                            for col_res in col_results:
-                                if row_res!=col_res:
-                                    results_tuples.append((row_res, col_res))
-                        for result in results_tuples:
-                            if result[0] in table:
-                                if result[1] in table[result[0]]:
-                                    table[result[0]][result[1]] = False
-                            if result[1] in table:
-                                if result[0] in table[result[1]]:
-                                    table[result[1]][result[0]] = False
-                        # if len(results_tuples) > 0:
-                        print(entry+" -> "+row+"X"+col+" = "+str(row_results)+"X"+str(col_results)+" => "+str(results_tuples))
-                        #     print("----------------------------------------------------------------------------")
+                if not table[row][col]['tested'] and not table[row][col]['equivalent']:
+                    return False
+        return True
+
+    def test_not_trivially(self, table):
+        while not self.tested_all(table):
+            for row in table:
+                for col in table[row]:
+                    if not table[row][col]['tested'] and not table[row][col]['equivalent']:
+                        for entry in self.__alphabet:
+                            row_results = list()
+                            col_results = list()
+                            for t in self.__transitions:
+                                if t[1] == entry and row in self.__transitions[t]:
+                                    row_results.append(t[0])
+                            for t in self.__transitions:
+                                if t[1] == entry and col in self.__transitions[t]:
+                                    col_results.append(t[0])
+                            results_tuples = list()
+                            for row_res in row_results:
+                                for col_res in col_results:
+                                    if row_res != col_res:
+                                        results_tuples.append((row_res, col_res))
+                            for result in results_tuples:
+                                if result[0] in table:
+                                    if result[1] in table[result[0]]:
+                                        table[result[0]][result[1]]['equivalent'] = False
+                                if result[1] in table:
+                                    if result[0] in table[result[1]]:
+                                        table[result[1]][result[0]]['equivalent'] = False
+                            # if len(results_tuples) > 0:
+                            table[row][col]['tested'] = True
+                            # print(entry + " -> " + row + "X" + col + " = " + str(row_results) + "X" + str(
+                            #     col_results) + " => " + str(results_tuples))
+                            #     print("----------------------------------------------------------------------------")
+
+    def get_equivalents(self, table):
+        equivalents = []
+        for row in table:
+            for col in table[row]:
+                if table[row][col]['equivalent']:
+                    equivalents.append([row, col])
+        for index, equivalent in enumerate(equivalents):
+            for other_index, other_equivalent in enumerate(equivalents):
+                if index != other_index:
+                    for state in equivalent:
+                        if state in other_equivalent:
+                            new_equivalents = list(set(equivalent+other_equivalent))
+                            if new_equivalents in equivalents:
+                                equivalents.pop(other_index)
+                                break
+                            else:
+                                equivalents[other_index] = list(set(equivalent+other_equivalent))
+
+        return equivalents
 
     def minimize(self, afd: Automaton) -> Automaton:
         table = self.mount_table()
         self.mark_trivially_not_equivalent(table)
         self.test_not_trivially(table)
-        self.print_eq_table(table)
+        new_transitions = copy.deepcopy(self.__transitions)
+        new_states = copy.deepcopy(self.__states)
+        new_finals = copy.deepcopy(self.__finals)
+        new_initials = copy.deepcopy(self.__finals)
+        for equivalent in self.get_equivalents(table):
+            for t in new_transitions:
+                for index,result in enumerate(new_transitions[t]):
+                    if result in equivalent and not equivalent.index(result) == 0:
+                        new_transitions[t][index] = equivalent[0]
+            for index,state in enumerate(equivalent):
+                if not index == 0:
+                    for letter in self.__alphabet:
+                        del new_transitions[(state, letter)]
+                    new_states.remove(state)
+                    if state in new_finals:
+                        new_finals.remove(state)
+                    if state in new_initials:
+                        new_initials.remove(state)
+        new_num_states = len(new_states)
+        minimized = Automaton(num_states=new_num_states, states=new_states,
+                              alphabet=self.__alphabet, transitions=new_transitions,
+                              initials=new_initials)
+        print(minimized)
         pass
 
     def add_state(self, name='', initial=False, final=False):
@@ -203,7 +258,7 @@ class Automaton:
                         self.add_transition(splitted_line[0], splitted_line[1], splitted_line[2])
                 readed_lines += 1
             f.close()
-            print("Automato Carregado\n "+str(self))
+            print("Automato Carregado\n " + str(self))
         except:
             self.error("load_text_file: arquivo mal formatado")
 
