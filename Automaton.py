@@ -1,19 +1,32 @@
 import copy
 
 
-class Automaton:
+class Automaton(object):
     pass
 
 
-class Automaton:
-    def __init__(self, num_states=0, states=list(), alphabet=list(), transitions=dict(), initials=list(), finals=list()):
-        self.__num_states = num_states
-        # elementos que compoem um automato
-        self.__states = states
-        self.__alphabet = alphabet  # [ A, ... ]
-        self.__transitions = transitions  # { (E, A*) : E+, ... }
-        self.__initials = initials # [ E, ... ]
-        self.__finals = finals  # [ E, ... ]
+class Automaton(object):
+    def __init__(self, *args):
+        if len(args) == 6:
+            self.__num_states = args[0]
+            # elementos que compoem um automato
+            self.__states = args[1]
+            self.__alphabet = args[2]  # [ A, ... ]
+            self.__transitions = args[3]  # { (E, A*) : E+, ... }
+            self.__initials = args[4] # [ E, ... ]
+            self.__finals = args[5]  # [ E, ... ]
+        else:
+            self.__num_states = 0
+            # elementos que compoem um automato
+            self.__states = list()
+            self.__alphabet = list()  # [ A, ... ]
+            self.__transitions = dict()  # { (E, A*) : E+, ... }
+            self.__initials = list() # [ E, ... ]
+            self.__finals = list()  # [ E, ... ]
+
+    def copy_af(self):
+        copied = copy.deepcopy(self)
+        return copied
 
     def mount_table(self):
         table = dict()
@@ -81,7 +94,11 @@ class Automaton:
                             #     col_results) + " => " + str(results_tuples))
                             #     print("----------------------------------------------------------------------------")
 
-    def get_equivalents(self, table):
+    def get_equivalents(self, table=None):
+        if table is None:
+            table = self.mount_table()
+            self.mark_trivially_not_equivalent(table)
+            self.test_not_trivially(table)
         equivalents = []
         for row in table:
             for col in table[row]:
@@ -98,37 +115,101 @@ class Automaton:
                                 break
                             else:
                                 equivalents[other_index] = list(set(equivalent+other_equivalent))
-
         return equivalents
 
-    def minimize(self, afd: Automaton) -> Automaton:
+    def minimize(self, rename=True) -> Automaton:
         table = self.mount_table()
         self.mark_trivially_not_equivalent(table)
         self.test_not_trivially(table)
         new_transitions = copy.deepcopy(self.__transitions)
         new_states = copy.deepcopy(self.__states)
         new_finals = copy.deepcopy(self.__finals)
-        new_initials = copy.deepcopy(self.__finals)
+        new_initials = copy.deepcopy(self.__initials)
         for equivalent in self.get_equivalents(table):
+            if rename:
+                new_name = ""
+                for state in equivalent:
+                    new_name += state
+            else:
+                new_name = equivalent[0]
             for t in new_transitions:
-                for index,result in enumerate(new_transitions[t]):
-                    if result in equivalent and not equivalent.index(result) == 0:
-                        new_transitions[t][index] = equivalent[0]
-            for index,state in enumerate(equivalent):
+                for index, result in enumerate(new_transitions[t]):
+                    if result in equivalent:
+                        new_transitions[t][index] = new_name
+            remove_from_dict = []
+            for t in list(new_transitions):
+                if t[0] in equivalent:
+                    new_transitions[(new_name, t[1])] = new_transitions[t]
+                    if rename:
+                        remove_from_dict.append(t)
+                    elif not equivalent.index(t[0]) == 0:
+                        remove_from_dict.append(t)
+            for t in remove_from_dict:
+                new_transitions.pop(t)
+
+            for index, state in enumerate(equivalent):
                 if not index == 0:
-                    for letter in self.__alphabet:
-                        del new_transitions[(state, letter)]
-                    new_states.remove(state)
+                    if state in new_states:
+                        new_states.remove(state)
                     if state in new_finals:
                         new_finals.remove(state)
                     if state in new_initials:
                         new_initials.remove(state)
+            if equivalent[0] in new_initials:
+                new_initials[new_initials.index(equivalent[0])] = new_name
+            if equivalent[0] in new_finals:
+                new_finals[new_finals.index(equivalent[0])] = new_name
+            if equivalent[0] in new_states:
+                new_states[new_states.index(equivalent[0])] = new_name
         new_num_states = len(new_states)
-        minimized = Automaton(num_states=new_num_states, states=new_states,
-                              alphabet=self.__alphabet, transitions=new_transitions,
-                              initials=new_initials)
-        print(minimized)
-        pass
+        return Automaton(new_num_states, new_states,
+                              self.__alphabet, new_transitions,
+                              new_initials, new_finals)
+
+    def is_equivalent_afd(self, afd: Automaton) -> bool:
+        afd2_states = copy.deepcopy(afd.__states)
+        afd2_initials = copy.deepcopy(afd.__initials)
+        afd2_finals = copy.deepcopy(afd.__finals)
+        afd2_transitions = copy.deepcopy(afd.__transitions)
+        for state in afd2_states:
+            if state in self.__states:
+                new_name = state+"|2"
+                for t in afd2_transitions:
+                    for index, result in enumerate(afd2_transitions[t]):
+                        if state == result:
+                            afd2_transitions[t][index] = new_name
+                remove_from_dict = []
+                for t in list(afd2_transitions):
+                    if t[0] == state:
+                        afd2_transitions[(new_name, t[1])] = afd2_transitions[t]
+                        remove_from_dict.append(t)
+                for t in remove_from_dict:
+                    afd2_transitions.pop(t)
+                afd2_states[afd2_states.index(state)] = new_name
+                if state in afd2_finals:
+                    afd2_finals[afd2_finals.index(state)] = new_name
+                if state in afd2_initials:
+                    afd2_initials[afd2_initials.index(state)] = new_name
+        afd2 = Automaton(len(afd2_states), afd2_states,
+                         afd.__alphabet, afd2_transitions,
+                         afd2_initials, afd2_finals)
+        test_transitions = dict()
+        test_transitions.update(self.__transitions)
+        test_transitions.update(afd2_transitions)
+        afd_test = Automaton(len(afd2_states)+len(self.__states), self.__states+afd2_states,
+                             list(set(self.__alphabet+afd.__alphabet)), test_transitions,
+                             self.__initials+afd2_initials, self.__finals+afd2_finals)
+        initials_eq_counter = 0
+        for i in self.__initials:
+            for i2 in afd2.__initials:
+                for equivalents in afd_test.get_equivalents():
+                    if i in equivalents and i2 in equivalents:
+                        initials_eq_counter += 1
+        if len(self.__initials) == 0 or len(afd2.__initials) == 0:
+            return False
+        if initials_eq_counter == len(self.__initials)*len(afd2.__initials):
+            return True
+        return False
 
     def add_state(self, name='', initial=False, final=False):
         self.__states.append(name)
@@ -158,9 +239,6 @@ class Automaton:
 
     def get_finals(self):
         return self.__finals
-
-    def get_states(self):
-        return self.__states.keys()
 
     def get_alphabet(self):
         return self.__alphabet
@@ -199,7 +277,7 @@ class Automaton:
     def is_afd(self):
         if len(self.__initials) > 1:
             return False
-        for e in self.get_states():
+        for e in self.__states:
             for (s, destiny) in self.get_transitions_from(e):
                 if len(s) != 1 or len(destiny) != 1:
                     return False
@@ -214,16 +292,34 @@ class Automaton:
     def is_afd_complete(self):
         if not self.is_afd():
             return False
-        for e in self.get_states():
+        for e in self.__states:
             for s in self.get_alphabet():
                 if not (e, s) in self.__transitions:
                     return False
         return True
 
     def save_text_file(self, filename=''):
-        pass
+        try:
+            f = open(filename, 'w+')
+            file_text = ""
+            for state in self.__states:
+                if not file_text=="":
+                    file_text += " "
+                if state in self.__initials:
+                    file_text += ">"
+                file_text += state
+                if state in self.__finals:
+                    file_text += "*"
+            file_text += "\n"
+            for transition in self.__transitions:
+                for result in self.__transitions[transition]:
+                    file_text += transition[0]+" "+transition[1]+" "+result+"\n"
+            f.write(file_text)
+            f.close()
+        except:
+            self.error("erro ao criar arquivo python")
 
-    def load_text_file(self, filename=''):
+    def load_text_file(self, filename: str = ''):
         try:
             f = open(filename, 'r')
             readed_lines = 0
