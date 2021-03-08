@@ -163,10 +163,43 @@ class Automaton(object):
                 new_states[new_states.index(equivalent[0])] = new_name
         new_num_states = len(new_states)
         return Automaton(new_num_states, new_states,
-                              self.__alphabet, new_transitions,
-                              new_initials, new_finals)
+                         self.__alphabet, new_transitions,
+                         new_initials, new_finals)
 
     def is_equivalent_afd(self, afd: Automaton) -> bool:
+        afd2_states = copy.deepcopy(afd.__states)
+        afd2_initials = copy.deepcopy(afd.__initials)
+        afd2_finals = copy.deepcopy(afd.__finals)
+        afd2_transitions = copy.deepcopy(afd.__transitions)
+        afd2 = self.rename(afd)
+        test_transitions = dict()
+        test_transitions.update(self.__transitions)
+        test_transitions.update(afd2_transitions)
+        afd_test = Automaton(len(afd2_states)+len(self.__states), self.__states+afd2_states,
+                             list(set(self.__alphabet+afd.__alphabet)), test_transitions,
+                             self.__initials+afd2_initials, self.__finals+afd2_finals)
+        initials_eq_counter = 0
+        for i in self.__initials:
+            for i2 in afd2.__initials:
+                for equivalents in afd_test.get_equivalents():
+                    if i in equivalents and i2 in equivalents:
+                        initials_eq_counter += 1
+        if len(self.__initials) == 0 or len(afd2.__initials) == 0:
+            return False
+        if initials_eq_counter == len(self.__initials)*len(afd2.__initials):
+            return True
+        return False
+
+    def complete(self) -> Automaton or None:
+        error_name = '|Error|'
+        for state in self.__states:
+            for letter in self.__alphabet:
+                if (state, letter) not in self.__transitions:
+                    if error_name not in self.__states:
+                        self.add_state(error_name)
+                    self.__transitions[(state, letter)] = [error_name]
+
+    def rename(self, afd: Automaton) -> Automaton:
         afd2_states = copy.deepcopy(afd.__states)
         afd2_initials = copy.deepcopy(afd.__initials)
         afd2_finals = copy.deepcopy(afd.__finals)
@@ -193,23 +226,72 @@ class Automaton(object):
         afd2 = Automaton(len(afd2_states), afd2_states,
                          afd.__alphabet, afd2_transitions,
                          afd2_initials, afd2_finals)
-        test_transitions = dict()
-        test_transitions.update(self.__transitions)
-        test_transitions.update(afd2_transitions)
-        afd_test = Automaton(len(afd2_states)+len(self.__states), self.__states+afd2_states,
-                             list(set(self.__alphabet+afd.__alphabet)), test_transitions,
-                             self.__initials+afd2_initials, self.__finals+afd2_finals)
-        initials_eq_counter = 0
-        for i in self.__initials:
-            for i2 in afd2.__initials:
-                for equivalents in afd_test.get_equivalents():
-                    if i in equivalents and i2 in equivalents:
-                        initials_eq_counter += 1
-        if len(self.__initials) == 0 or len(afd2.__initials) == 0:
-            return False
-        if initials_eq_counter == len(self.__initials)*len(afd2.__initials):
-            return True
-        return False
+        return afd2
+
+    def multiplication(self, afd: Automaton) -> Automaton or None:
+        self_copy = copy.deepcopy(self)
+        for letter_self in self_copy.__alphabet:
+            if letter_self not in afd.__alphabet:
+                afd.__alphabet.append(letter_self)
+        for letter in afd.__alphabet:
+            if letter not in self_copy.__alphabet:
+                self_copy.__alphabet.append(letter)
+        afd2 = self.rename(afd)
+        afd2.complete()
+        afd.__states = afd2.__states
+        afd.__initials = afd2.__initials
+        afd.__finals = afd2.__finals
+        afd.__transitions = afd2.__transitions
+        self_copy.complete()
+        afd_multiplication = Automaton()
+        for state_af1 in self_copy.__states:
+            for state_af2 in afd2.__states:
+                afd_multiplication.add_state(state_af1+state_af2,
+                                             initial=(state_af2 in afd2.__initials and state_af1 in self.__initials)
+                                             )
+        error_name = '|Error|'
+        for state_af1 in self_copy.__states:
+            for state_af2 in afd2.__states:
+                for letter in self_copy.__alphabet:
+                    if (state_af1, letter) in self_copy.__transitions:
+                        for result_af1 in self_copy.__transitions[(state_af1, letter)]:
+                            if (state_af2, letter) in afd2.__transitions:
+                                for result_af2 in afd2.__transitions[(state_af2, letter)]:
+                                    if result_af1+result_af2 in afd_multiplication.__states:
+                                        afd_multiplication.add_transition(state_af1+state_af2, letter, result_af1+result_af2)
+                                    elif result_af2+result_af1 in afd_multiplication.__states:
+                                        afd_multiplication.add_transition(state_af1+state_af2, letter, result_af2+result_af1)
+        afd_multiplication.__alphabet = self_copy.__alphabet
+        afd_multiplication.complete()
+        return afd_multiplication
+
+    def operation(self, afd: Automaton, operation: str) -> Automaton or None:
+        multiplication_result = self.multiplication(afd)
+        if operation.lower() == "u":
+            for state_af1 in self.__states:
+                for state_af2 in afd.__states:
+                    if state_af1 in self.__finals or state_af2 in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+        elif operation.lower() == "i":
+            for state_af1 in self.__states:
+                for state_af2 in afd.__states:
+                    if state_af1 in self.__finals and state_af2 in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+        elif operation.lower() == "d":
+            for state_af1 in self.__states:
+                for state_af2 in afd.__states:
+                    if state_af1 in self.__finals and state_af2 not in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+                    if state_af1 not in self.__finals and state_af2 in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+        elif operation.lower() == "c":
+            for state_af1 in self.__states:
+                for state_af2 in afd.__states:
+                    if state_af1 not in self.__finals and state_af2 not in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+                    if state_af1 not in self.__finals and state_af2 not in afd.__finals:
+                        multiplication_result.__finals.append(state_af1+state_af2)
+        return multiplication_result
 
     def add_state(self, name='', initial=False, final=False):
         self.__states.append(name)

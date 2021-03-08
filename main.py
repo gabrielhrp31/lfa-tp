@@ -52,6 +52,8 @@ if __name__ == '__main__':
                   "3 - Minimizar Automato\n"
                   "4 - Mostrar Estados Equivalentes\n"
                   "5 - Testar Equivalencia Entre Automatos\n"
+                  "6 - Multiplicar Automatos\n"
+                  "7 - Operações entre Automatos\n"
                   )
             option = int(input('Selecione a operação que deseja realizar:'))
         except:
@@ -86,5 +88,21 @@ if __name__ == '__main__':
                 else:
                     text += "NÂO EQUIVALENTE"
                 print(text)
+        elif option == 6:
+            automaton1 = load_and_return()
+            automaton2 = load_and_return("Digite o caminho do arquivo(Ex:'./afd2.txt'):")
+            if not automaton1 is None and not automaton2 is None:
+                multiplication = automaton1.multiplication(automaton2)
+                print(multiplication)
+        elif option == 7:
+            automaton1 = load_and_return()
+            automaton2 = load_and_return("Digite o caminho do arquivo(Ex:'./afd2.txt'):")
+            if not automaton1 is None and not automaton2 is None:
+                operation = input("Digite o tipo de operação(U=União, I=Interseção,D=Diferença,C=Complemento):")
+                while not(operation.lower() == "u" or operation.lower() == "i" or operation.lower() == "d"
+                          or operation.lower() == "c"):
+                    operation = input("Digite o tipo de operação(U=União, I=Interseção,D=Diferença,C=Complemento):")
+                operation = automaton1.operation(automaton2, operation)
+                print(operation)
         else:
             print("Opção Inválida!")
