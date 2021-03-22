@@ -6,6 +6,14 @@ class Automaton(object):
 
 
 class Automaton(object):
+    __num_states = 0
+    # elementos que compoem um automato
+    __states = []
+    __alphabet = []  # [ A, ... ]
+    __transitions = {}  # { (E, A*) : E+, ... }
+    __initials = []  # [ E, ... ]
+    __finals = []
+
     def __init__(self, *args):
         if len(args) == 6:
             self.__num_states = args[0]
@@ -117,7 +125,7 @@ class Automaton(object):
                                 equivalents[other_index] = list(set(equivalent+other_equivalent))
         return equivalents
 
-    def minimize(self, rename=True) -> Automaton:
+    def minimize(self, rename=True) -> Automaton():
         table = self.mount_table()
         self.mark_trivially_not_equivalent(table)
         self.test_not_trivially(table)
@@ -166,7 +174,7 @@ class Automaton(object):
                          self.__alphabet, new_transitions,
                          new_initials, new_finals)
 
-    def is_equivalent_afd(self, afd: Automaton) -> bool:
+    def is_equivalent_afd(self, afd: Automaton()) -> bool:
         afd2_states = copy.deepcopy(afd.__states)
         afd2_initials = copy.deepcopy(afd.__initials)
         afd2_finals = copy.deepcopy(afd.__finals)
@@ -199,7 +207,7 @@ class Automaton(object):
                         self.add_state(error_name)
                     self.__transitions[(state, letter)] = [error_name]
 
-    def rename(self, afd: Automaton) -> Automaton:
+    def rename(self, afd: Automaton()) -> Automaton():
         afd2_states = copy.deepcopy(afd.__states)
         afd2_initials = copy.deepcopy(afd.__initials)
         afd2_finals = copy.deepcopy(afd.__finals)
@@ -228,7 +236,7 @@ class Automaton(object):
                          afd2_initials, afd2_finals)
         return afd2
 
-    def multiplication(self, afd: Automaton) -> Automaton or None:
+    def multiplication(self, afd: Automaton()) -> Automaton() or None:
         self_copy = copy.deepcopy(self)
         for letter_self in self_copy.__alphabet:
             if letter_self not in afd.__alphabet:
@@ -265,7 +273,7 @@ class Automaton(object):
         afd_multiplication.complete()
         return afd_multiplication
 
-    def operation(self, afd: Automaton, operation: str) -> Automaton or None:
+    def operation(self, afd: Automaton(), operation: str) -> Automaton or None:
         multiplication_result = self.multiplication(afd)
         if operation.lower() == "u":
             for state_af1 in self.__states:
@@ -292,6 +300,93 @@ class Automaton(object):
                     if state_af1 not in self.__finals and state_af2 not in afd.__finals:
                         multiplication_result.__finals.append(state_af1+state_af2)
         return multiplication_result
+
+    def afn_afd(self) -> Automaton() or None:
+        afn = self.copy_af()
+        if  afn.has_lambda():
+            print("Converta o AFN-γ para AFN primeiro")
+            return None
+        if not afn.is_afd():
+            afd = Automaton()
+            afd.__alphabet = afn.__alphabet
+            new_initial = "|".join(afn.__initials)
+            transitions = {}
+            afd.add_state(new_initial, initial=True)
+            for letter in afn.__alphabet:
+                for state in afn.__initials:
+                    if (state, letter) in afn.__transitions:
+                        for destiny in afn.__transitions[(state, letter)]:
+                            if (new_initial, letter) in transitions:
+                                if not destiny in transitions[(new_initial, letter)]:
+                                    has_destiny_str = False
+                                    for d in transitions[(new_initial, letter)]:
+                                        if "|"+destiny in d or destiny+"|" in d:
+                                            has_destiny_str = True
+                                    if not has_destiny_str:
+                                        transitions[(new_initial, letter)].append(destiny)
+                            else:
+                                transitions[(new_initial, letter)] = [destiny]
+                        if len(transitions[(new_initial, letter)]) > 1:
+                            sorted_transition = transitions[(new_initial, letter)]
+                            sorted_transition.sort()
+                            transitions[(new_initial, letter)] = ["|".join(sorted_transition)]
+            state_missing = True
+            while state_missing:
+                state_missing = False
+                for t in list(transitions):
+                    for destiny in transitions[t]:
+                        if destiny not in afd.__states:
+                            original_states = destiny.split("|")
+                            is_final = False
+                            for original in original_states:
+                                if original in afn.__finals:
+                                    is_final = True
+                            afd.add_state(destiny, final=is_final)
+                            for letter in afn.__alphabet:
+                                for state in original_states:
+                                    if (state, letter) in afn.__transitions:
+                                        for destiny_new in afn.__transitions[(state, letter)]:
+                                            if (destiny, letter) in transitions:
+                                                if not destiny_new in transitions[(destiny, letter)]:
+                                                    transitions[(destiny, letter)].append(destiny_new)
+                                            else:
+                                                transitions[(destiny, letter)] = [destiny_new]
+                                        if len(transitions[(destiny, letter)]) > 1:
+                                            sorted_transition = transitions[(destiny, letter)]
+                                            sorted_transition.sort()
+                                            new_state = "|".join(sorted_transition)
+                                            if new_state not in afd.__states:
+                                                state_missing = True
+                                            transitions[(destiny, letter)] = [new_state]
+            afd.__transitions = transitions
+            afd.complete()
+            return afd
+        else:
+            print("O automato ja é um afd")
+            return None
+
+    def afn_vazio_afn(self) -> Automaton() or None:
+        afn_vazio = self.copy_af()
+        if afn_vazio.has_lambda():
+            eclose = {}
+            for state in afn_vazio.__states:
+                if (state, 'γ') in afn_vazio.__transitions:
+                    eclose[state] = [state]+afn_vazio.__transitions[(state, 'γ')]
+                else:
+                    eclose[state] = [state]
+            afn = self.copy_af()
+            afn.__alphabet.remove('γ')
+            for t in list(afn.__transitions):
+                if t[1] == 'γ':
+                    afn.__transitions.pop(t)
+                else:
+                    eclose_destinations = []
+                    for destiny in afn.__transitions[t]:
+                        eclose_destinations = eclose_destinations + eclose[destiny]
+                    afn.__transitions[t] = eclose_destinations
+            return afn
+        else:
+            print("O automato não tem o transições γ")
 
     def add_state(self, name='', initial=False, final=False):
         self.__states.append(name)
@@ -367,7 +462,7 @@ class Automaton(object):
 
     def has_lambda(self):
         for (e, s) in self.__transitions:
-            if s == '':
+            if s == 'γ':
                 return True
         return False
 
@@ -410,24 +505,25 @@ class Automaton(object):
             for line in f:
                 splitted_line = line.replace("\n", "").split(" ")
                 if not named:
+                    while '' in splitted_line:
+                        splitted_line.remove('')
                     if readed_lines == 0:
-                        if len(splitted_line) > 1:
+                        if len(splitted_line) != 0:
                             named = True
                             for state in splitted_line:
                                 final = '*' in state
                                 initial = '>' in state
                                 self.add_state(state.replace(">", "").replace("*", ""), initial=initial, final=final)
-                        else:
-                            num_states = int(line)
-                        pass
                         # self.__num_states = int(line)
                     elif readed_lines == 1:
-                        self.__alphabet = splitted_line
+                        num_states = int(line)
                     elif readed_lines == 2:
-                        self.__initials = splitted_line
+                        self.__alphabet = splitted_line
                     elif readed_lines == 3:
+                        self.__initials = splitted_line
+                    elif readed_lines == 4:
                         self.__finals = splitted_line
-                        for i in range(0, num_states):
+                        for i in range(1, num_states+1):
                             self.add_state(str(i), initial=i in self.__initials, final=i in self.__finals)
                     else:
                         self.add_transition(splitted_line[0], splitted_line[1], splitted_line[2])
