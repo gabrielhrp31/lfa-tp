@@ -348,6 +348,10 @@ class Automaton(object):
                                         for destiny_new in afn.__transitions[(state, letter)]:
                                             if (destiny, letter) in transitions:
                                                 if not destiny_new in transitions[(destiny, letter)]:
+                                                    has_destiny_str = False
+                                                    for d in transitions[(destiny, letter)]:
+                                                        if "|"+destiny_new in d or destiny_new+"|" in d:
+                                                            has_destiny_str = True
                                                     transitions[(destiny, letter)].append(destiny_new)
                                             else:
                                                 transitions[(destiny, letter)] = [destiny_new]

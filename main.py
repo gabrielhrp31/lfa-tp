@@ -130,9 +130,7 @@ if __name__ == '__main__':
                 print(result)
                 result.save_text_file(input("Digite o caminho para salvar a conversão realizada(Ex:'./afny-afd.txt'):"))
         elif option == 10:
-            # automaton1 = load_and_return()
-            afn_vazio = Automaton()
-            afn_vazio.load_text_file("./afn_vazio.txt")
+            automaton1 = load_and_return()
             if not afn_vazio is None:
                 afn = afn_vazio.afn_vazio_afn()
                 afd = afn.afn_afd()
